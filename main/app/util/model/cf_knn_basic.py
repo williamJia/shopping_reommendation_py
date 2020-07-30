@@ -37,6 +37,7 @@ class cf_knn_basic(base_model):
         :param model_path:模型持久化地址，默认为空，不执行持久化
         :return: 训练好的模型
         '''
+        print('begin to train')
         # 数据类型转换为 surprise 需要的格式
         data = Dataset.load_from_df(df, self.reader)
         trainset = data.build_full_trainset()
@@ -48,30 +49,42 @@ class cf_knn_basic(base_model):
 
         return algo_knnbasic
 
-    def predict(self, df, model_path, top_n=10):
+    def predict(self, df, model_path, top_n=10,sub_num = 10240):
         '''
         输入待预测dataframe，返回结果集合
         :param df: 待预测数据
         :param model_path: 模型地址
+        :param top_n:相似度取topN
+        :param sub_num:批量预测，每批的数量
         :return: 预测结果集合
         '''
-        data = Dataset.load_from_df(df, self.reader)
-        trainset = data.build_full_trainset()
-        predict_set = trainset.build_anti_testset()
+        print('begin to predict')
+        ret = []
 
-        _, algo = surprise.dump.load(model_path)
-        predictions = algo.test(predict_set)
-        ret = self._get_top_n(predictions, n=top_n)
-        ret_df = self._change_ret_dict2df(ret)
-        return ret_df
+        # 批量预测
+        for i in range(0,len(df),sub_num):
+            index = min((i+ sub_num),len(df))
+            df_sub = df[i:index]
+            data = Dataset.load_from_df(df_sub, self.reader)
+            trainset = data.build_full_trainset()
+            predict_set = trainset.build_anti_testset()
 
-    def fit_transform(self,df,top_k,model_path='temp_index_model.index'):
+            _, algo = surprise.dump.load(model_path)
+            predictions = algo.test(predict_set)
+            ret_n = self._get_top_n(predictions, n=top_n)
+            ret_df = self._change_ret_dict2df(ret_n)
+            ret.append(ret_df)
+        ret = pd.concat(ret)
+
+        return ret
+
+    def fit_transform(self,df,top_k,model_path='temp_index_model.index',sub_num = 10240):
         self.train(df,model_path)
-        ret = self.predict(df,model_path,top_k)
+        ret = self.predict(df,model_path,top_k,sub_num)
         return ret
 
     def get_test_data(self):
-        df = pd.DataFrame({'uid': ['u1', 'u2', 'u3', 'u4', 'u5', 'u3', 'u4', 'u5', 'u1', 'u2', 'u3', 'u4', 'u5', 'u3', 'u4', 'u5', 'u1', 'u2', 'u3', 'u4', 'u5', 'u3', 'u4', 'u5'],
+        df = pd.DataFrame({'uid': ['u1', 'u2', 'u3', 'u4', 'u5', 'u3', 'u4', 'u5', 'u1', 'u2', 'u3', 'u4', 'u5', 'u3', 'u4', 'u5', 'u1', 'u2', 'u3', 'u4', 'u5', 'u3', 'u4', 'u6'],
                            'vid': ['v1', 'v2', 'v3', 'v1', 'v2', 'v3', 'v1', 'v2', 'v1', 'v2', 'v3', 'v1', 'v2', 'v3','v1', 'v2', 'v1', 'v2', 'v3', 'v1', 'v2', 'v3', 'v1', 'v2'],
                            'rating': [1, 2, 5, 4, 2, 2, 1, 5, 1, 2, 5, 4, 2, 2, 1, 5, 1, 2, 5, 4, 2, 2, 1, 5]})
         return df
